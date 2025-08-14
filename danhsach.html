@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Danh sách đã lưu</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+    
+    /* Chỉnh style phần tổng */
+    #totalsRow td {
+      vertical-align: middle;
+    }
+  
+    #summaryContainer {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 15px;
+      align-items: flex-start;
+    }
+  
+    #summaryLeft, #summaryRight {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 6px;
+      flex: 1 1 320px; /* tối thiểu 320px, co dãn */
+      min-width: 300px;
+      box-sizing: border-box;
+    }
+  
+    #summaryLeft div, #summaryRight div {
+      margin-bottom: 10px;
+    }
+  
+    #summaryLeft label {
+      font-weight: 600;
+    }
+  
+    #atCounter {
+      max-width: 160px;
+    }
+  
+    /* Chi tiết số tờ dạng danh sách có scroll */
+    #denominationDetails {
+      max-height: 180px; /* tăng cao hơn cho scroll thoải mái */
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 8px;
+      border-radius: 4px;
+      background: white;
+      word-break: break-word; /* xuống dòng khi dài */
+    }
+  
+    #denominationDetails dl {
+      margin: 0;
+    }
+  
+    #denominationDetails dt, #denominationDetails dd {
+      display: inline-block;
+      margin: 0;
+      padding: 0 8px 4px 0;
+      vertical-align: top;
+    }
+  
+    #denominationDetails dt {
+      font-weight: 700;
+    }
+  
+    /* Canh phải số tiền */
+    .text-right {
+      text-align: right;
+    }
+  
+    /* Các chỉ số tổng hợp */
+    .summary-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Tạo màu cho đủ/thiếu */
+    .enough {
+      color: green;
+      font-weight: 600;
+    }
+    .lack {
+      color: red;
+      font-weight: 600;
+    }
+  </style>
+  
+</head>
+<body class="p-3">
+
+<h3>Danh sách đã lưu</h3>
+<a href="home.html" class="btn btn-secondary mb-3">⬅ Quay lại nhập</a>
+<a href="quaydau.html" class="btn btn-warning mb-3 ms-2">⟳ Quay đầu</a>
+<button id="toggleDetailsBtn" class="btn btn-primary mb-3">Ẩn chi tiết</button>
+<button id="printLargeNotesBtn" class="btn btn-info mb-3 ms-2">In tờ >=50k</button>
+<table class="table table-bordered table-sm">
+    <thead>
+        <tr>
+            <th>Thời gian</th>
+            <th style="position: relative;">
+              Tên
+              <button id="searchNameBtn" class="btn btn-sm btn-outline-primary ms-2" type="button" style="vertical-align: middle; padding: 0 6px; font-weight: bold; line-height: 1;">&#x25BC;</button>
+
+              <div id="nameDropdown" style="display:none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 4px; max-height: 200px; overflow-y: auto; width: 200px; z-index: 1000;">
+                <!-- Danh sách tên sẽ được fill bằng JS -->
+              </div>
+            </th>
+            <th>Tiền mặt</th>
+            <th>Chuyển khoản</th>
+            <th>Phải trả</th>
+            <th>Dư/Thiếu</th>
+            <th>Chi tiết số tờ</th>
+            <th>Hành động</th>
+        </tr>
+    </thead>
+    
+    <tbody id="recordTable"></tbody>
+    <tfoot id="totalsRow" class="fw-bold table-info"></tfoot>
+</table>
+<script>
+    // Cấu hình hiển thị cột (bạn muốn ẩn cột nào thì để false)
+const columnsToShow = {
+    time: true,
+    name: true,
+    cash: true,
+    bank: true,
+    mustPay: true,
+    diff: true,
+    counts: true,
+    action: true,  // cột nút xóa
+};
+
+const tbody = document.getElementById("recordTable");
+const totalsRow = document.getElementById("totalsRow");
+const toggleBtn = document.getElementById("toggleDetailsBtn");
+
+const searchNameBtn = document.getElementById("searchNameBtn");
+const nameDropdown = document.getElementById("nameDropdown");
+
+let data = JSON.parse(localStorage.getItem("paymentRecords") || "[]");
+
+// Lọc bỏ các bản ghi trùng (theo tên + tiền mặt + chuyển khoản + phải trả)
+data = data.filter((record, index, self) => {
+    return index === self.findIndex(r =>
+        r.name === record.name &&
+        r.cash === record.cash &&
+        r.bank === record.bank &&
+        r.mustPay === record.mustPay
+    );
+});
+localStorage.setItem("paymentRecords", JSON.stringify(data));
+
+let filteredData = null; // Dữ liệu đang lọc theo tên
+
+// Nút hiện tất cả (khi đang lọc)
+let showAllBtn = null;
+
+// Hàm render bảng
+function renderTable(dataToRender = null) {
+    const list = dataToRender || data;
+    tbody.innerHTML = "";
+
+    const totalDenominations = {};
+    let totalMustPay = 0;
+    let totalBank = 0;
+    let totalCash = 0;
+
+    list.forEach((record, index) => {
+        totalMustPay += record.mustPay;
+        totalBank += record.bank;
+        totalCash += record.cash;
+
+        const details = record.counts
+            .filter(c => c.count > 0)
+            .map(c => {
+                if (!totalDenominations[c.denomination]) {
+                    totalDenominations[c.denomination] = 0;
+                }
+                totalDenominations[c.denomination] += c.count;
+                return `${c.count} x ${c.denomination.toLocaleString('vi-VN')}`;
+            })
+            .join('<br>');
+
+        const tr = document.createElement("tr");
+
+        let innerHTML = "";
+        if(columnsToShow.time) innerHTML += `<td>${record.time}</td>`;
+        if(columnsToShow.name) innerHTML += `<td>${record.name}</td>`;
+        if(columnsToShow.cash) innerHTML += `<td class="text-right">${record.cash.toLocaleString('vi-VN')}</td>`;
+        if(columnsToShow.bank) innerHTML += `<td class="text-right">${record.bank.toLocaleString('vi-VN')}</td>`;
+        if(columnsToShow.mustPay) innerHTML += `<td class="text-right">${record.mustPay.toLocaleString('vi-VN')}</td>`;
+        if(columnsToShow.diff) innerHTML += `<td class="${record.diff >= 0 ? 'enough' : 'lack'} text-right">${Math.abs(record.diff).toLocaleString('vi-VN')} ${record.note || ''}</td>`;
+        if(columnsToShow.counts) innerHTML += `<td>${details}</td>`;
+
+        if(columnsToShow.action) {
+            innerHTML += `<td><button class="btn btn-sm btn-danger btn-delete" data-index="${index}">Xóa</button></td>`;
+        }
+
+        tr.innerHTML = innerHTML;
+        tbody.appendChild(tr);
+    });
+
+    // Tính tổng
+    let totalNotesCount = 0;
+    let totalCashFromNotes = 0;
+    let totalNotesCountNoSmall = 0;
+    let totalCashFromNotesNoSmall = 0;
+
+    Object.keys(totalDenominations).forEach(denom => {
+        const count = totalDenominations[denom];
+        const value = count * parseInt(denom);
+        totalNotesCount += count;
+        totalCashFromNotes += value;
+
+        if (parseInt(denom) >= 50000) {
+            totalNotesCountNoSmall += count;
+            totalCashFromNotesNoSmall += value;
+        }
+    });
+
+    const totalCollected = totalCash + totalBank;
+    const totalDiff = list.reduce((acc, rec) => acc + rec.diff, 0);
+
+    totalsRow.innerHTML = `
+<tr>
+  <td colspan="2" class="text-end align-middle">TỔNG:</td>
+  <td class="align-middle text-right">${totalCash.toLocaleString('vi-VN')}</td>
+  <td class="align-middle text-right">${totalBank.toLocaleString('vi-VN')}</td>
+  <td class="align-middle text-right">${totalMustPay.toLocaleString('vi-VN')}</td>
+  <td class="align-middle ${totalDiff >= 0 ? 'enough' : 'lack'} text-right">${totalDiff.toLocaleString('vi-VN')}</td>
+  <td></td>
+  <td></td>
+</tr>
+<tr>
+  <td colspan="8">
+    <div id="summaryContainer">
+      <div id="summaryLeft">
+        <div class="mb-3">
+          <label for="atCounter" class="form-label">Thu tại quầy:</label>
+          <input type="text" id="atCounter" class="form-control form-control-sm" value="0" />
+        </div>
+        
+        <div class="summary-item"><span><strong>Tổng (Tiền mặt + CK):</strong></span><span>${totalCollected.toLocaleString('vi-VN')}</span></div>
+        <div class="summary-item"><span><strong>Tổng (Phải trả + Thu quầy):</strong></span><span id="totalWithCounter"></span></div>
+        <div id="compareResult" class="mt-2 p-2"></div>
+      </div>
+
+     <div id="summaryRight">
+<div><strong>Chi tiết số tờ (theo mệnh giá):</strong></div>
+<div id="denominationDetails">
+  ${Object.keys(totalDenominations)
+    .sort((a, b) => b - a)
+    .map(denom => {
+      const count = totalDenominations[denom];
+      return `${count} x ${parseInt(denom).toLocaleString('vi-VN')}`;
+    }).join('<br>')}
+</div>
+
+<hr />
+
+<div class="summary-item"><span><strong>Tổng số tờ:</strong></span><span>${totalNotesCount.toLocaleString('vi-VN')}</span></div>
+<div class="summary-item"><span><strong>Tổng tiền mặt từ số tờ:</strong></span><span>${totalCashFromNotes.toLocaleString('vi-VN')}</span></div>
+<div class="summary-item"><span><strong>Tổng số tờ (>= 50k):</strong></span><span>${totalNotesCountNoSmall.toLocaleString('vi-VN')}</span></div>
+<div class="summary-item"><span><strong>Tổng tiền mặt (>= 50k):</strong></span><span>${totalCashFromNotesNoSmall.toLocaleString('vi-VN')}</span></div>
+<div class="summary-item"><span><strong>Tổng tiền mặt - tiền mặt >= 50k:</strong></span><span>${(totalCash - totalCashFromNotesNoSmall).toLocaleString('vi-VN')}</span></div>
+</div>
+
+    </div>
+  </td>
+</tr>
+`;
+
+    // Hàm định dạng số với dấu chấm ngăn cách hàng nghìn
+    function formatNumberWithDots(x) {
+        if (!x) return "";
+        return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+
+    // Hàm chuyển chuỗi đã format thành số
+    function parseNumberFromFormatted(str) {
+        return Number(str.replace(/\./g, '')) || 0;
+    }
+
+    // Xử lý phần "Thu tại quầy" và so sánh
+    const atCounterInput = document.getElementById("atCounter");
+    const totalWithCounterSpan = document.getElementById("totalWithCounter");
+    const compareResult = document.getElementById("compareResult");
+
+    function updateTotalWithCounter(atCounterNum = 0) {
+        const atCounter = atCounterNum;
+        const tongWithCounter = totalMustPay + atCounter;
+        totalWithCounterSpan.textContent = tongWithCounter.toLocaleString('vi-VN');
+
+        if (tongWithCounter > totalCollected) {
+            compareResult.textContent = `THIẾU ${(tongWithCounter - totalCollected).toLocaleString('vi-VN')}`;
+            compareResult.className = "lack p-1";
+        } else if (tongWithCounter < totalCollected) {
+            compareResult.textContent = `DƯ ${(totalCollected - tongWithCounter).toLocaleString('vi-VN')}`;
+            compareResult.className = "enough p-1";
+        } else {
+            compareResult.textContent = "ĐỦ";
+            compareResult.className = "enough p-1";
+        }
+    }
+
+    // Sự kiện khi nhập dữ liệu vào ô "Thu tại quầy"
+    atCounterInput.addEventListener("input", (e) => {
+        let val = e.target.value;
+        // Xóa tất cả ký tự không phải số
+        val = val.replace(/[^\d]/g, '');
+
+        // Chuyển về số nguyên
+        const numVal = parseNumberFromFormatted(val);
+
+        // Format lại có dấu chấm ngăn cách hàng nghìn
+        const formattedVal = formatNumberWithDots(numVal);
+
+        // Cập nhật lại ô input
+        e.target.value = formattedVal;
+
+        // Cập nhật tổng và kết quả so sánh
+        updateTotalWithCounter(numVal);
+    });
+
+    // Khởi tạo hiển thị lần đầu, với giá trị 0
+    updateTotalWithCounter(0);
+}
+
+// Hàm tạo danh sách tên trong popup
+function fillNameDropdown() {
+    // Lấy tên duy nhất
+    const uniqueNames = [...new Set(data.map(item => item.name))].sort((a,b) => a.localeCompare(b));
+    if(uniqueNames.length === 0) {
+        nameDropdown.innerHTML = '<div style="padding: 5px;">Không có dữ liệu</div>';
+        return;
+    }
+    nameDropdown.innerHTML = uniqueNames.map(name => 
+        `<div class="name-item" style="padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #eee;">${name}</div>`
+    ).join('');
+}
+
+// Hiển thị hoặc ẩn popup tìm tên
+searchNameBtn.addEventListener("click", () => {
+    if(nameDropdown.style.display === "block") {
+        nameDropdown.style.display = "none";
+    } else {
+        fillNameDropdown();
+        nameDropdown.style.display = "block";
+    }
+});
+
+// Ẩn popup khi click ngoài
+document.addEventListener("click", (e) => {
+    if (!searchNameBtn.contains(e.target) && !nameDropdown.contains(e.target)) {
+        nameDropdown.style.display = "none";
+    }
+});
+
+// Khi chọn tên trong danh sách
+nameDropdown.addEventListener("click", (e) => {
+    if(e.target.classList.contains("name-item")) {
+        const selectedName = e.target.textContent;
+        filteredData = data.filter(item => item.name === selectedName);
+        renderTable(filteredData);
+        nameDropdown.style.display = "none";
+
+        // Ẩn nút ẩn chi tiết và hiện nút hiện tất cả
+        toggleBtn.style.display = "none";
+        addShowAllButton();
+    }
+});
+
+// Thêm nút hiện tất cả (khi đang lọc)
+function addShowAllButton() {
+    if(showAllBtn) return; // Nếu đã tồn tại thì không tạo thêm
+    showAllBtn = document.createElement("button");
+    showAllBtn.textContent = "Hiện tất cả";
+    showAllBtn.className = "btn btn-success mb-3 ms-2";
+    showAllBtn.type = "button";
+
+    // Thêm nút ngay cạnh nút Ẩn chi tiết
+    toggleBtn.insertAdjacentElement('afterend', showAllBtn);
+
+    showAllBtn.addEventListener("click", () => {
+        filteredData = null;
+        renderTable();
+
+        showAllBtn.remove();
+        showAllBtn = null;
+
+        toggleBtn.style.display = "";
+    });
+}
+toggleBtn.addEventListener("click", () => {
+    if (tbody.style.display === "none") {
+        tbody.style.display = "";
+        toggleBtn.textContent = "Ẩn chi tiết";
+        // Bật lại nút mũi tên tìm tên
+        searchNameBtn.disabled = false;
+        searchNameBtn.style.pointerEvents = "";
+        nameDropdown.style.display = "none"; // ẩn popup nếu đang mở
+    } else {
+        tbody.style.display = "none";
+        toggleBtn.textContent = "Hiện chi tiết";
+        // Vô hiệu hóa nút mũi tên tìm tên
+        searchNameBtn.disabled = true;
+        searchNameBtn.style.pointerEvents = "none";
+        nameDropdown.style.display = "none"; // ẩn popup nếu đang mở
+    }
+});
+// Xử lý xóa bản ghi
+tbody.addEventListener("click", (e) => {
+    if(e.target.classList.contains("btn-delete")) {
+        const index = parseInt(e.target.getAttribute("data-index"));
+        if(filteredData) {
+            // Xóa trên filteredData và trên data gốc
+            const recordToDelete = filteredData[index];
+            // Xóa trên data gốc
+            data = data.filter(r => r !== recordToDelete);
+            filteredData.splice(index, 1);
+        } else {
+            // Xóa trực tiếp trên data
+            data.splice(index, 1);
+        }
+
+        localStorage.setItem("paymentRecords", JSON.stringify(data));
+        renderTable(filteredData || null);
+
+        // Nếu dữ liệu lọc hết thì tự động hiển thị tất cả lại
+        if(filteredData && filteredData.length === 0) {
+            filteredData = null;
+            renderTable();
+            if(showAllBtn) {
+                showAllBtn.remove();
+                showAllBtn = null;
+            }
+            toggleBtn.style.display = "";
+        }
+    }
+});
+// Xử lý nút In tờ >= 50k
+document.getElementById("printLargeNotesBtn").addEventListener("click", () => {
+    const listToUse = filteredData || data;
+
+    // Lấy tổng số tờ của các mệnh giá >= 50k
+    const largeNotesDetails = {};
+
+    listToUse.forEach(record => {
+        record.counts.forEach(c => {
+            if (c.count > 0 && c.denomination >= 50000) {
+                if (!largeNotesDetails[c.denomination]) {
+                    largeNotesDetails[c.denomination] = 0;
+                }
+                largeNotesDetails[c.denomination] += c.count;
+            }
+        });
+    });
+
+    const largeNotesArray = Object.keys(largeNotesDetails)
+        .map(key => ({ denomination: parseInt(key), count: largeNotesDetails[key] }))
+        .sort((a, b) => b.denomination - a.denomination);
+
+    console.log('largeNotesArray:', largeNotesArray);
+
+    sessionStorage.setItem("largeNotesToPrint", JSON.stringify(largeNotesArray));
+    window.location.href = "inbill.html";
+});
+
+// Khởi tạo lần đầu
+renderTable();
+</script>
+
+</body>
+</html>

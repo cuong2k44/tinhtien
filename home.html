@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tính tiền giao hàng</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+    .enough { background-color: #d4edda; }
+    .lack { background-color: #f8d7da; }
+    .denomination-input { width: 50px; padding: 2px; text-align: center; font-size: 13px; }
+    #denominationTable td, #denominationTable th { padding: 4px; font-size: 13px; }
+    textarea { resize: none; font-size: 14px; }
+    
+</style>
+</head>
+<body class="p-3">
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <h4>Nhập dữ liệu</h4>
+        <textarea id="dataInput" class="form-control mb-2" rows="4" placeholder="Dán dữ liệu..."></textarea>
+        <div class="d-flex gap-2">
+            <button id="processBtn" class="btn btn-primary flex-fill">Past</button>
+            <button id="clearBtn" class="btn btn-danger flex-fill">Xóa</button>
+            <a href="danhsach.html" class="btn btn-secondary flex-fill">Xem DS đã lưu</a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div id="calcSection" class="d-none">
+            <h5 id="customerName"></h5>
+            <p><strong>Phải trả:</strong> <span id="mustPay"></span></p>
+
+            <table class="table table-bordered table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Mệnh giá</th>
+                        <th>Số tờ</th>
+                        <th>Tiền mặt</th>
+                    </tr>
+                </thead>
+                <tbody id="denominationTable"></tbody>
+            </table>
+
+            <div class="mb-2">
+                <label>Tiền chuyển khoản: </label>
+                <input type="text" id="bankInput" class="form-control" placeholder="Nhập số tiền...">
+            </div>
+
+            <p><strong>Tổng tiền mặt:</strong> <span id="cashTotal">0</span></p>
+            <p><strong>Thiếu/Dư:</strong> <span id="statusAmount">0</span></p>
+
+            <button id="saveBtn" class="btn btn-success w-100">Lưu</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const denominations = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];
+    const processBtn = document.getElementById("processBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const dataInput = document.getElementById("dataInput");
+    const denominationTable = document.getElementById("denominationTable");
+    const customerName = document.getElementById("customerName");
+    const mustPayEl = document.getElementById("mustPay");
+    const cashTotalEl = document.getElementById("cashTotal");
+    const bankInput = document.getElementById("bankInput");
+    const statusAmountEl = document.getElementById("statusAmount");
+    const calcSection = document.getElementById("calcSection");
+    const saveBtn = document.getElementById("saveBtn");
+
+    let mustPay = 0;
+
+    function formatMoney(num) {
+        return num.toLocaleString('vi-VN');
+    }
+
+    function recalc() {
+        let cashTotal = 0;
+        document.querySelectorAll(".denomination-input").forEach((input, i) => {
+            const count = parseInt(input.value) || 0;
+            cashTotal += count * denominations[i];
+        });
+        cashTotalEl.textContent = formatMoney(cashTotal);
+
+        const bank = parseInt(bankInput.value.replace(/[^0-9]/g, "")) || 0;
+        const diff = cashTotal + bank - mustPay;
+        statusAmountEl.textContent = formatMoney(diff);
+
+        if (diff >= 0) {
+            statusAmountEl.parentElement.classList.remove("lack");
+            statusAmountEl.parentElement.classList.add("enough");
+        } else {
+            statusAmountEl.parentElement.classList.remove("enough");
+            statusAmountEl.parentElement.classList.add("lack");
+        }
+    }
+
+    bankInput.addEventListener("input", (e) => {
+        let value = e.target.value.replace(/[^0-9]/g, "");
+        if (value) {
+            e.target.value = formatMoney(parseInt(value));
+        } else {
+            e.target.value = "";
+        }
+        recalc();
+    });
+processBtn.addEventListener("click", () => {
+    const lines = dataInput.value.trim().split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return alert("Thiếu dữ liệu");
+
+    let name = "";
+    let maxAmount = 0;
+
+    if (lines.length === 1) {
+        // Chỉ 1 dòng: tách tên và tiền
+        const raw = lines[0];
+        const nums = raw.match(/\d[\d.,]*/g);
+        if (nums) {
+            nums.forEach(numStr => {
+                const val = parseInt(numStr.replace(/[^0-9]/g, "")) || 0;
+                if (val > maxAmount) maxAmount = val;
+            });
+        }
+        // Lấy phần chữ trước số đầu tiên làm tên
+        const firstNumIndex = raw.search(/\d/);
+        name = firstNumIndex > 0 ? raw.substring(0, firstNumIndex).trim() : raw;
+    } else {
+        // Nhiều dòng: dòng đầu tiên là tên
+        name = lines[0];
+        lines.forEach(line => {
+            const nums = line.match(/\d[\d.,]*/g);
+            if (nums) {
+                nums.forEach(numStr => {
+                    const val = parseInt(numStr.replace(/[^0-9]/g, "")) || 0;
+                    if (val > maxAmount) maxAmount = val;
+                });
+            }
+        });
+    }
+
+    mustPay = maxAmount;
+    customerName.textContent = name;
+    mustPayEl.textContent = formatMoney(mustPay);
+
+    // Tạo bảng mệnh giá
+    denominationTable.innerHTML = "";
+    denominations.forEach(den => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${formatMoney(den)}</td>
+            <td><input type="number" min="0" class="form-control denomination-input"></td>
+            <td class="denom-total">0</td>
+        `;
+        const input = tr.querySelector("input");
+        input.addEventListener("input", () => {
+            const totalCell = tr.querySelector(".denom-total");
+            totalCell.textContent = formatMoney((parseInt(input.value) || 0) * den);
+            recalc();
+        });
+        denominationTable.appendChild(tr);
+    });
+
+    bankInput.value = "";
+    recalc();
+    calcSection.classList.remove("d-none");
+});
+
+    clearBtn.addEventListener("click", () => {
+        dataInput.value = "";
+        denominationTable.innerHTML = "";
+        calcSection.classList.add("d-none");
+    });
+
+    saveBtn.addEventListener("click", () => {
+        const name = customerName.textContent;
+        const cash = parseInt(cashTotalEl.textContent.replace(/[^0-9]/g, "")) || 0;
+        const bank = parseInt(bankInput.value.replace(/[^0-9]/g, "")) || 0;
+        const now = new Date();
+        const diff = cash + bank - mustPay;
+
+        let note = diff >= 0 ? "Dư" : "Thiếu";
+
+        // Lấy số tờ từng mệnh giá
+        const counts = [];
+        document.querySelectorAll(".denomination-input").forEach((input, i) => {
+            counts.push({denomination: denominations[i], count: parseInt(input.value) || 0});
+        });
+
+        // Lưu vào localStorage
+        let savedData = JSON.parse(localStorage.getItem("paymentRecords") || "[]");
+        savedData.push({
+            time: now.toLocaleString('vi-VN'),
+            name,
+            cash,
+            bank,
+            mustPay,
+            diff,
+            note,
+            counts
+        });
+        localStorage.setItem("paymentRecords", JSON.stringify(savedData));
+
+        alert("Đã lưu! Vào 'Xem DS đã lưu' để kiểm tra.");
+    });
+</script>
+</body>
+</html>
+
