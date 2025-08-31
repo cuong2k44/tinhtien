@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Tính tổng tiền từ Excel</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; display: flex; gap: 40px; }
+    textarea, input { width: 100%; margin-top: 8px; padding: 6px; }
+    textarea { height: 150px; }
+    .result { margin-top: 20px; font-weight: bold; }
+    hr { margin: 12px 0; }
+    .container { flex: 1; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    table, th, td { border: 1px solid #ccc; }
+    th, td { padding: 6px; text-align: center; }
+    .denominations { flex: 1; }
+  </style>
+</head>
+<body>
+  <!-- BÊN TRÁI: Nhập Excel + Tính tổng -->
+  <div class="container">
+    <h2>Tính tổng tiền từ Excel</h2>
+    <p>Dán dữ liệu copy từ Excel vào ô dưới đây:</p>
+    
+    <textarea id="excelData" placeholder="Dán dữ liệu từ Excel vào đây..."></textarea>
+    
+    <input type="number" id="tienQuay" placeholder="Nhập tiền thu tại quầy (VND)">
+    <input type="number" id="tienTru" placeholder="Nhập tiền trừ (VND)">
+    
+    <button onclick="tinhTong()">Tính tổng</button>
+    <button onclick="truThem()">Trừ thêm</button>
+    
+    <div class="result">
+      Tổng tiền từ Excel: <span id="excelTotal">0</span> VND<br>
+      Tiền thu tại quầy: <span id="quayTotal">0</span> VND<br>
+      <hr>
+      👉 Tổng trước khi trừ: <span id="beforeTru">0</span> VND<br>
+      Tổng tiền đã trừ: <span id="truTotal">0</span> VND<br>
+      <hr>
+      ✅ Tổng cuối cùng sau khi trừ: <span id="finalTotal">0</span> VND<br>
+      Người tạo: <span id="creator">Chưa xác định</span>
+    </div>
+  </div>
+
+  <!-- BÊN PHẢI: Bảng mệnh giá -->
+  <div class="denominations">
+    <h2>Bảng mệnh giá</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Mệnh giá</th>
+          <th>Số tờ</th>
+          <th>Thành tiền</th>
+        </tr>
+      </thead>
+      <tbody id="menhGiaTable">
+        <!-- Sinh ra tự động bằng JS -->
+      </tbody>
+    </table>
+    <div class="result">
+      💵 Tổng tiền mặt: <span id="tongMenhGia">0</span> VND
+    </div>
+  </div>
+
+  <script>
+    // ============ PHẦN TÍNH TỔNG TỪ EXCEL ============
+    let tongExcel = 0;
+    let tongQuay = 0;
+    let tongCuoi = 0;
+    let tongTru = 0;  // biến tích lũy tiền trừ
+    let creator = "";
+
+    function tinhTong() {
+      let raw = document.getElementById('excelData').value.trim();
+      tongQuay = parseFloat(document.getElementById('tienQuay').value.replace(/[^0-9]/g, "")) || 0;
+      tongTru = 0; // reset lại khi tính tổng mới
+      
+      if (!raw) {
+        alert("Bạn chưa nhập dữ liệu!");
+        return;
+      }
+      
+      let rows = raw.split("\n");
+      tongExcel = 0;
+      creator = "";
+
+      rows.forEach((row, index) => {
+        let cols = row.split("\t");
+        
+        // Bỏ qua dòng tiêu đề
+        if (index === 0 && isNaN(parseFloat(cols[2]))) {
+          return;
+        }
+        
+        // Cột 3 = tiền thu
+        let moneyStr = cols[2] ? cols[2].replace(/[^0-9]/g, "") : "0";
+        let money = parseFloat(moneyStr);
+        if (!isNaN(money)) {
+          tongExcel += money;
+        }
+
+        // Lấy người tạo từ cột 4
+        if (!creator && cols[3]) {
+          creator = cols[3];
+        }
+      });
+
+      tongCuoi = tongExcel + tongQuay;
+      capNhatKetQua();
+    }
+
+    function truThem() {
+      let soTru = parseFloat(document.getElementById('tienTru').value.replace(/[^0-9]/g, "")) || 0;
+      tongTru += soTru; // cộng dồn
+      capNhatKetQua();
+    }
+
+    function capNhatKetQua() {
+      let tongSauTru = tongCuoi - tongTru;
+
+      document.getElementById('excelTotal').innerText = tongExcel.toLocaleString("vi-VN");
+      document.getElementById('quayTotal').innerText = tongQuay.toLocaleString("vi-VN");
+      document.getElementById('beforeTru').innerText = tongCuoi.toLocaleString("vi-VN");
+      document.getElementById('truTotal').innerText = tongTru.toLocaleString("vi-VN");
+      document.getElementById('finalTotal').innerText = tongSauTru.toLocaleString("vi-VN");
+      document.getElementById('creator').innerText = creator || "Không xác định";
+    }
+
+    // ============ PHẦN BẢNG MỆNH GIÁ ============
+    const menhGia = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];
+    const tableBody = document.getElementById("menhGiaTable");
+
+    menhGia.forEach(mg => {
+      let tr = document.createElement("tr");
+
+      let tdMenhGia = document.createElement("td");
+      tdMenhGia.innerText = mg.toLocaleString("vi-VN");
+      
+      let tdSoTo = document.createElement("td");
+      let input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.value = "0";
+      input.style.width = "80px";
+      input.oninput = tinhMenhGia;
+      tdSoTo.appendChild(input);
+      
+      let tdThanhTien = document.createElement("td");
+      tdThanhTien.innerText = "0";
+      tdThanhTien.className = "thanhTien";
+
+      tr.appendChild(tdMenhGia);
+      tr.appendChild(tdSoTo);
+      tr.appendChild(tdThanhTien);
+
+      tableBody.appendChild(tr);
+    });
+
+    function tinhMenhGia() {
+      let rows = tableBody.querySelectorAll("tr");
+      let tong = 0;
+
+      rows.forEach((row, i) => {
+        let soTo = parseInt(row.querySelector("input").value) || 0;
+        let tien = menhGia[i] * soTo;
+        row.querySelector(".thanhTien").innerText = tien.toLocaleString("vi-VN");
+        tong += tien;
+      });
+
+      document.getElementById("tongMenhGia").innerText = tong.toLocaleString("vi-VN");
+    }
+  </script>
+</body>
+</html>

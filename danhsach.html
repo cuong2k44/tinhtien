@@ -111,7 +111,9 @@
             </th>
             <th>Tiền mặt</th>
             <th>Chuyển khoản</th>
+             <th>Trừ ra</th>
             <th>Phải trả</th>
+            
             <th>Dư/Thiếu</th>
             <th>Chi tiết số tờ</th>
             <th>Hành động</th>
@@ -128,6 +130,7 @@ const columnsToShow = {
     name: true,
     cash: true,
     bank: true,
+     nolai:true,
     mustPay: true,
     diff: true,
     counts: true,
@@ -149,6 +152,7 @@ data = data.filter((record, index, self) => {
         r.name === record.name &&
         r.cash === record.cash &&
         r.bank === record.bank &&
+        r.nolai == record.nolai &&
         r.mustPay === record.mustPay
     );
 });
@@ -168,12 +172,13 @@ function renderTable(dataToRender = null) {
     let totalMustPay = 0;
     let totalBank = 0;
     let totalCash = 0;
+    let totalNolai =0;
 
     list.forEach((record, index) => {
         totalMustPay += record.mustPay;
         totalBank += record.bank;
         totalCash += record.cash;
-
+        totalNolai +=record.nolai;
         const details = record.counts
             .filter(c => c.count > 0)
             .map(c => {
@@ -192,7 +197,9 @@ function renderTable(dataToRender = null) {
         if(columnsToShow.name) innerHTML += `<td>${record.name}</td>`;
         if(columnsToShow.cash) innerHTML += `<td class="text-right">${record.cash.toLocaleString('vi-VN')}</td>`;
         if(columnsToShow.bank) innerHTML += `<td class="text-right">${record.bank.toLocaleString('vi-VN')}</td>`;
+        if(columnsToShow.nolai) innerHTML += `<td class="text-right">${record.nolai.toLocaleString('vi-VN')}</td>`;
         if(columnsToShow.mustPay) innerHTML += `<td class="text-right">${record.mustPay.toLocaleString('vi-VN')}</td>`;
+       
         if(columnsToShow.diff) innerHTML += `<td class="${record.diff >= 0 ? 'enough' : 'lack'} text-right">${Math.abs(record.diff).toLocaleString('vi-VN')} ${record.note || ''}</td>`;
         if(columnsToShow.counts) innerHTML += `<td>${details}</td>`;
 
@@ -222,7 +229,7 @@ function renderTable(dataToRender = null) {
         }
     });
 
-    const totalCollected = totalCash + totalBank;
+    const totalCollected = totalCash + totalBank + totalNolai;
     const totalDiff = list.reduce((acc, rec) => acc + rec.diff, 0);
 
     totalsRow.innerHTML = `
@@ -230,7 +237,9 @@ function renderTable(dataToRender = null) {
   <td colspan="2" class="text-end align-middle">TỔNG:</td>
   <td class="align-middle text-right">${totalCash.toLocaleString('vi-VN')}</td>
   <td class="align-middle text-right">${totalBank.toLocaleString('vi-VN')}</td>
+     <td class="align-middle text-right">${totalNolai.toLocaleString('vi-VN')}</td>
   <td class="align-middle text-right">${totalMustPay.toLocaleString('vi-VN')}</td>
+ 
   <td class="align-middle ${totalDiff >= 0 ? 'enough' : 'lack'} text-right">${totalDiff.toLocaleString('vi-VN')}</td>
   <td></td>
   <td></td>
